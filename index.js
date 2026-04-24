@@ -2,10 +2,15 @@ const {
   Client,
   GatewayIntentBits,
   ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
-  EmbedBuilder
+  EmbedBuilder,
+  REST,
+  Routes,
+  SlashCommandBuilder
 } = require("discord.js");
 
 require("dotenv").config();
@@ -16,11 +21,60 @@ const client = new Client({
 
 let numeroRSO = 1;
 
-client.once("ready", () => {
+// REGISTRAR COMANDO /painel
+const commands = [
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Envia o painel de RSO no canal atual")
+    .toJSON()
+];
+
+const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
+
+async function registrarComandos() {
+  try {
+    await rest.put(
+      Routes.applicationCommands(process.env.CLIENT_ID),
+      { body: commands }
+    );
+    console.log("Comando /painel registrado.");
+  } catch (error) {
+    console.error("Erro ao registrar comando:", error);
+  }
+}
+
+client.once("ready", async () => {
   console.log(`Bot online como ${client.user.tag}`);
+  await registrarComandos();
 });
 
 client.on("interactionCreate", async (interaction) => {
+
+  // COMANDO /painel
+  if (interaction.isChatInputCommand()) {
+    if (interaction.commandName === "painel") {
+      const embed = new EmbedBuilder()
+        .setColor("#ff0000")
+        .setTitle("PAINEL DE RSO - 2º BPCHQ ANCHIETA")
+        .setDescription(
+          "Ao finalizar o serviço, o oficial responsável deverá preencher e publicar o Relatório de Serviço Operacional."
+        );
+
+      const botao = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId("criar_rso")
+          .setLabel("Criar RSO")
+          .setStyle(ButtonStyle.Danger)
+      );
+
+      await interaction.reply({
+        embeds: [embed],
+        components: [botao]
+      });
+    }
+  }
+
+  // BOTÃO CRIAR RSO
   if (interaction.isButton()) {
     if (interaction.customId === "criar_rso") {
       const modal = new ModalBuilder()
@@ -31,38 +85,35 @@ client.on("interactionCreate", async (interaction) => {
         .setCustomId("dados_viatura")
         .setLabel("Dados da Viatura")
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder("Ex: Unidade, P1, P2, P2 E P3")
-
+        .setPlaceholder("Unidade, encarregado, motorista e terceiro homem")
         .setRequired(true);
 
       const supervisao = new TextInputBuilder()
         .setCustomId("supervisao")
         .setLabel("Supervisão do Patrulhamento")
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder("Ex: N/A ou descreva o patrulhamento realizado")
+        .setPlaceholder("Ex: N/A ou resumo do patrulhamento")
         .setRequired(true);
 
       const horario = new TextInputBuilder()
         .setCustomId("horario")
         .setLabel("Início e Término do Patrulhamento")
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder("Ex:\nInício: 18/12/2025, 15:35\nTérmino: 18/12/2025, 17:15")
+        .setPlaceholder("Ex: Início: 20:00 | Término: 23:00")
         .setRequired(true);
 
       const ilicitos = new TextInputBuilder()
         .setCustomId("ilicitos")
         .setLabel("Ilícitos Apreendidos")
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder("Ex: - ou descreva os ilícitos apreendidos")
+        .setPlaceholder("Ex: - ou itens apreendidos")
         .setRequired(true);
 
       const estatisticas = new TextInputBuilder()
         .setCustomId("estatisticas")
         .setLabel("BOPMs e Estatísticas")
         .setStyle(TextInputStyle.Paragraph)
-        .setPlaceholder(
-          "Ex:\nBOPMs: Nenhum BOPM registrado\nPresos: 0 | Óbitos: 1 | Abordados: 0"
-        )
+        .setPlaceholder("BOPMs, presos, óbitos e abordados")
         .setRequired(true);
 
       modal.addComponents(
@@ -77,6 +128,7 @@ client.on("interactionCreate", async (interaction) => {
     }
   }
 
+  // ENVIO DO RSO
   if (interaction.isModalSubmit()) {
     if (interaction.customId === "modal_rso") {
       const dadosViatura = interaction.fields.getTextInputValue("dados_viatura");
@@ -95,23 +147,23 @@ client.on("interactionCreate", async (interaction) => {
         .addFields(
           {
             name: "📋 Dados da Viatura",
-            value: dadosViatura || "-"
+            value: (dadosViatura || "-").slice(0, 1024)
           },
           {
             name: "📊 Supervisão do Patrulhamento",
-            value: supervisao || "-"
+            value: (supervisao || "-").slice(0, 1024)
           },
           {
             name: "⏰ Início e Término do Patrulhamento",
-            value: horario || "-"
+            value: (horario || "-").slice(0, 1024)
           },
           {
             name: "📦 Ilícitos Apreendidos",
-            value: ilicitos || "-"
+            value: (ilicitos || "-").slice(0, 1024)
           },
           {
             name: "📝 BOPMs e Estatísticas",
-            value: estatisticas || "-"
+            value: (estatisticas || "-").slice(0, 1024)
           }
         )
         .setFooter({
@@ -119,9 +171,7 @@ client.on("interactionCreate", async (interaction) => {
         })
         .setTimestamp();
 
-      const canal = await client.channels.fetch(process.env.CANAL_RSO);
-
-      await canal.send({
+      await interaction.channel.send({
         embeds: [embed]
       });
 
